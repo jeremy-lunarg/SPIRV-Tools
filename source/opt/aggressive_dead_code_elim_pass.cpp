@@ -630,6 +630,14 @@ void AggressiveDCEPass::InitializeModuleScopeLiveInstructions() {
     auto dbg_none = context()->get_debug_info_mgr()->GetDebugInfoNone();
     AddToWorklist(dbg_none);
   }
+
+  // Temporary Hack: Add all DebugCompilationUnit to worklist
+  for (auto& dbg : get_module()->ext_inst_debuginfo()) {
+    if (dbg.GetShader100DebugOpcode() ==
+        NonSemanticShaderDebugInfo100DebugCompilationUnit) {
+      AddToWorklist(&dbg);
+    }
+  }
 }
 
 Pass::Status AggressiveDCEPass::ProcessImpl() {
