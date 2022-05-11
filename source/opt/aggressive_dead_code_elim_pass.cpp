@@ -631,15 +631,12 @@ void AggressiveDCEPass::InitializeModuleScopeLiveInstructions() {
     AddToWorklist(dbg_none);
   }
 
-  // Add all DebugCompilationUnit, DebugSourceContinued, and
-  // DebugFunctionDefinition to worklist
+  // Add all DebugCompilationUnit, DebugSourceContinued to worklist
   for (auto& dbg : get_module()->ext_inst_debuginfo()) {
     if (dbg.GetShader100DebugOpcode() ==
             NonSemanticShaderDebugInfo100DebugCompilationUnit ||
         dbg.GetShader100DebugOpcode() ==
-            NonSemanticShaderDebugInfo100DebugSourceContinued ||
-        dbg.GetShader100DebugOpcode() ==
-            NonSemanticShaderDebugInfo100DebugFunctionDefinition) {
+            NonSemanticShaderDebugInfo100DebugSourceContinued) {
       AddToWorklist(&dbg);
     }
   }
