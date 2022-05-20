@@ -688,11 +688,13 @@ Pass::Status SSARewriter::AddDebugValuesForInvisibleDebugDecls(Function* fp) {
       // If |value| in the same basic block does not dominate |decl|, we can
       // assign the value in the immediate dominator.
       value_id = GetValueAtBlock(var_id, dom_tree->ImmediateDominator(bb));
-      if (value_id) value = pass_->get_def_use_mgr()->GetDef(value_id);
-      if (value_id &&
-          pass_->context()->get_debug_info_mgr()->AddDebugValueForDecl(
-              decl, value_id, decl, value) == nullptr) {
-        return Pass::Status::Failure;
+      if (value_id) {
+        value = pass_->get_def_use_mgr()->GetDef(value_id);
+        if (value &&
+            pass_->context()->get_debug_info_mgr()->AddDebugValueForDecl(
+                decl, value_id, decl, value) == nullptr) {
+          return Pass::Status::Failure;
+        }
       }
     }
 
