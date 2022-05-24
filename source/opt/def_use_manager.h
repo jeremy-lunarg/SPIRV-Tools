@@ -154,6 +154,10 @@ class DefUseManager {
   // Returns the map from ids to their def instructions.
   const IdToDefMap& id_to_defs() const { return id_to_def_; }
 
+  // If |inst| defines an result id, the use record of this result id will
+  // be removed from all user instructions.
+  void ClearDef(Instruction* inst);
+
   // Clear the internal def-use record of the given instruction |inst|. This
   // method will update the use information of the operand ids of |inst|. The
   // record: |inst| uses an |id|, will be removed from the use records of |id|.

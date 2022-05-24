@@ -37,11 +37,11 @@ void DefUseManager::AnalyzeInstDef(Instruction* inst) {
     if (iter != id_to_def_.end()) {
       // Clear the original instruction that defining the same result id of the
       // new instruction.
-      ClearInst(iter->second);
+      ClearDef(iter->second);
     }
     id_to_def_[def_id] = inst;
   } else {
-    ClearInst(inst);
+    ClearDef(inst);
   }
 }
 
@@ -236,22 +236,24 @@ void DefUseManager::AnalyzeDefUse(Module* module) {
       true);
 }
 
-void DefUseManager::ClearInst(Instruction* inst) {
-  if (inst_to_used_id_.find(inst) != inst_to_used_id_.end()) {
-    EraseUseRecordsOfOperandIds(inst);
-    uint32_t const result_id = inst->result_id();
-    if (result_id != 0) {
-      // For each using instruction, remove result_id from their used ids.
-      auto iter = inst_to_users_.find(inst);
-      if (iter != inst_to_users_.end()) {
-        for (Instruction* use : iter->second) {
-          inst_to_used_id_.at(use).remove_first(result_id);
-        }
-        inst_to_users_.erase(iter);
+void DefUseManager::ClearDef(Instruction* inst) {
+  uint32_t const result_id = inst->result_id();
+  if (result_id != 0) {
+    // For each using instruction, remove result_id from their used ids.
+    auto iter = inst_to_users_.find(inst);
+    if (iter != inst_to_users_.end()) {
+      for (Instruction* use : iter->second) {
+        inst_to_used_id_.at(use).remove_first(result_id);
       }
-      id_to_def_.erase(inst->result_id());
+      inst_to_users_.erase(iter);
     }
+    id_to_def_.erase(inst->result_id());
   }
+}
+
+void DefUseManager::ClearInst(Instruction* inst) {
+  EraseUseRecordsOfOperandIds(inst);
+  ClearDef(inst);
 }
 
 void DefUseManager::EraseUseRecordsOfOperandIds(const Instruction* inst) {
