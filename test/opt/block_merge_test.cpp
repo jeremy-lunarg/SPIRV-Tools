@@ -1201,6 +1201,15 @@ OpFunctionEnd
   SinglePassRunAndMatch<BlockMergePass>(text, true);
 }
 
+TEST_F(BlockMergeTest, DebugScopeMerge) {
+  // Verify merge can be done completely, cleanly and validly in presence of
+  // NonSemantic.Shader.DebugInfo.100 instructions
+  const std::string text = R"(
+)";
+
+  SinglePassRunAndMatch<BlockMergePass>(text, true);
+}
+
 // TODO(greg-lunarg): Add tests to verify handling of these cases:
 //
 //    More complex control flow
