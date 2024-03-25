@@ -27,6 +27,8 @@ Pass::Status InlineExhaustivePass::InlineExhaustive(Function* func) {
   for (auto bi = func->begin(); bi != func->end(); ++bi) {
     for (auto ii = bi->begin(); ii != bi->end();) {
       if (IsInlinableFunctionCall(&*ii)) {
+        [[maybe_unused]] auto function_call = ii->PrettyPrint(SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES);
+        [[maybe_unused]] auto function = id2function_[ii->GetSingleWordOperand(2)]->DefInst().PrettyPrint(SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES);
         // Inline call.
         std::vector<std::unique_ptr<BasicBlock>> newBlocks;
         std::vector<std::unique_ptr<Instruction>> newVars;
