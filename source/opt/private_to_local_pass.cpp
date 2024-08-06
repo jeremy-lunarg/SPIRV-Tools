@@ -26,6 +26,7 @@ namespace opt {
 namespace {
 constexpr uint32_t kVariableStorageClassInIdx = 0;
 constexpr uint32_t kSpvTypePointerTypeIdInIdx = 1;
+constexpr uint32_t kEntryPointFunctionIdInIdx = 1;
 }  // namespace
 
 Pass::Status PrivateToLocalPass::Process() {
@@ -48,15 +49,17 @@ Pass::Status PrivateToLocalPass::Process() {
       continue;
     }
 
-    Function* target_function = FindLocalFunction(inst);
-    if (target_function != nullptr) {
-      variables_to_move.push_back({&inst, target_function});
+    // TODO: Handle all functions.
+    // TODO: Might want to return the map from entry points to functions.
+    std::set<Function*> target_functions = FindLocalFunctions(inst);
+    if (!target_functions.empty()) {
+      variables_to_move.push_back({&inst, *(target_functions.begin())});
     }
   }
 
   modified = !variables_to_move.empty();
   for (auto p : variables_to_move) {
-    if (!MoveVariable(p.first, p.second)) {
+    if (!CopyVariable(p.first, p.second)) {
       return Status::Failure;
     }
     localized_variables.insert(p.first->result_id());
@@ -85,31 +88,56 @@ Pass::Status PrivateToLocalPass::Process() {
   return (modified ? Status::SuccessWithChange : Status::SuccessWithoutChange);
 }
 
-Function* PrivateToLocalPass::FindLocalFunction(const Instruction& inst) const {
-  bool found_first_use = false;
-  Function* target_function = nullptr;
-  context()->get_def_use_mgr()->ForEachUser(
-      inst.result_id(),
-      [&target_function, &found_first_use, this](Instruction* use) {
-        BasicBlock* current_block = context()->get_instr_block(use);
-        if (current_block == nullptr) {
-          return;
-        }
+std::set<Function*> PrivateToLocalPass::FindLocalFunctions(const Instruction& inst) const {
+  // Create a map of entry points to the function id containing the first use of the instruction. There
+  // must only be one function per entry point if we wish to substitute the private variable.
+  std::unordered_map<Function*, Function*> ep_to_use {};
 
-        if (!IsValidUse(use)) {
-          found_first_use = true;
-          target_function = nullptr;
+  auto const result_id = inst.result_id();
+  context()->get_def_use_mgr()->ForEachUser(
+    result_id,
+    [&ep_to_use, &inst, this](Instruction* use) {
+      BasicBlock* current_block = context()->get_instr_block(use);
+      if (current_block == nullptr) {
+        return;
+      }
+
+      // If use is invalid, then remove all references to the current functions.
+      Function* current_function = current_block->GetParent();
+      if (!IsValidUse(use)) {
+        for (auto iter = std::begin(ep_to_use); iter != std::end(ep_to_use);) {
+          if (iter->second == current_function) {
+            iter = ep_to_use.erase(iter);
+          }
+        }
+        return;
+      }
+
+      // Find all entry points that can reach the use instruction.
+      std::unordered_set<Function*> entry_points;
+      std::set<Function*> visited_ids;
+      FindEntryPointFuncs(current_function, entry_points, visited_ids);
+
+      // Update the map of entry points. If the function isn't found, then add it. If the function is found,
+      // then it must match the current function; otherwise, substitution will not be allowed.  
+      for (auto const entry_point : entry_points) {
+        auto const ep_iter = ep_to_use.find(entry_point);
+        if(ep_iter == std::end(ep_to_use)) {
+          ep_to_use[entry_point] = current_function;
+        } else if(ep_iter->second != current_function) {
           return;
         }
-        Function* current_function = current_block->GetParent();
-        if (!found_first_use) {
-          found_first_use = true;
-          target_function = current_function;
-        } else if (target_function != current_function) {
-          target_function = nullptr;
-        }
-      });
-  return target_function;
+      }
+    });
+    
+    // TODO: Return map and avoid the copy?
+    // Return target functions that can substitute the variable.
+    std::set<Function*> target_functions {};
+    for(auto const [key, value] : ep_to_use) {
+      target_functions.insert(value);
+    }
+    
+  return target_functions;
 }  // namespace opt
 
 bool PrivateToLocalPass::MoveVariable(Instruction* variable,
@@ -138,6 +166,42 @@ bool PrivateToLocalPass::MoveVariable(Instruction* variable,
 
   // Update uses where the type may have changed.
   return UpdateUses(variable);
+}
+
+// Copy |variable| from the private storage class to the function storage
+// class of |function|. Returns false if the variable could not be moved.
+bool PrivateToLocalPass::CopyVariable(Instruction* variable, Function* function) {
+
+  // TODO: See CloneSameBlockOps.
+
+  // Clone the variable.
+  std::unique_ptr<Instruction> new_variable(variable->Clone(context()));
+
+  // Update the storage class of the new variable.
+  new_variable->SetInOperand(kVariableStorageClassInIdx,
+                         {uint32_t(spv::StorageClass::Function)});
+
+  // Update the type of the new variable.
+  uint32_t new_type_id = GetNewType(new_variable->type_id());
+    if (new_type_id == 0) {
+    return false;
+  }
+  new_variable->SetResultType(new_type_id);
+
+  get_decoration_mgr()->CloneDecorations(new_variable->result_id(), new_type_id);
+
+  context()->AnalyzeUses(new_variable.get());
+  context()->set_instr_block(new_variable.get(), &*function->begin());
+  function->begin()->begin()->InsertBefore(std::move(new_variable));
+
+  // function->begin()->AddInstruction(std::move(new_variable));
+
+  // TODO: // After all copies of variable have been made.
+// variable->RemoveFromList();
+// context()->ForgetUses(variable);
+
+  // Update uses where the type may have changed.
+  return UpdateUses(new_variable.get());
 }
 
 uint32_t PrivateToLocalPass::GetNewType(uint32_t old_type_id) {
@@ -230,6 +294,78 @@ bool PrivateToLocalPass::UpdateUses(Instruction* inst) {
     }
   }
   return true;
+}
+
+bool PrivateToLocalPass::IsEntryPointFunc(const Function* func) const {
+  for (auto& entry_point : get_module()->entry_points()) {
+    if (entry_point.GetSingleWordInOperand(kEntryPointFunctionIdInIdx) ==
+      func->result_id()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// TODO: Remove?
+Instruction PrivateToLocalPass::GetEntryPointFunc(const Function& func) const {
+  // if(IsEntryPointFunc(func)) {
+  //   return func.DefInst();
+  // }
+
+  Instruction* ep_func {nullptr};
+  context()->get_def_use_mgr()->WhileEachUser(func.result_id(),
+    [&ep_func](Instruction* use) {
+      switch (use->opcode()) {
+        case spv::Op::OpFunctionCall:
+          ep_func = use;
+          return false;
+          break;
+        default:
+          return true;
+          break;
+      };
+    });
+  
+  return *ep_func;
+}
+
+bool PrivateToLocalPass::IsEntryPointFunc(const uint32_t& func_id) const {
+  for (auto& entry_point : get_module()->entry_points()) {
+    if (entry_point.GetSingleWordInOperand(kEntryPointFunctionIdInIdx) == func_id) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// A function may be reached from more than one entry point.
+void PrivateToLocalPass::FindEntryPointFuncs(Function* func,
+    std::unordered_set<Function*>& entry_points,
+    std::set<Function*>& visited_funcs) const {
+  // Ignore cycles. Stop if we've visited this function already.
+  if(visited_funcs.find(func) != std::end(visited_funcs)) {
+    return;
+  } else {
+    visited_funcs.insert(func);
+  }
+
+  if(IsEntryPointFunc(func)) {
+    entry_points.insert(func);
+  }
+
+  context()->get_def_use_mgr()->ForEachUser(func->result_id(), [this, &entry_points, &visited_funcs](Instruction* use) {
+    switch (use->opcode()) {
+      case spv::Op::OpFunctionCall: {
+        auto current_function = context()->get_instr_block(use)->GetParent();
+        FindEntryPointFuncs(current_function, entry_points, visited_funcs);
+        break;
+      }
+      default:
+        break;
+    };
+  });
 }
 
 }  // namespace opt

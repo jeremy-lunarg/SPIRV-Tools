@@ -44,11 +44,16 @@ class PrivateToLocalPass : public Pass {
   // class of |function|.  Returns false if the variable could not be moved.
   bool MoveVariable(Instruction* variable, Function* function);
 
+  // Copy |variable| from the private storage class to the function storage
+  // class of |function|. Returns false if the variable could not be moved.
+  bool CopyVariable(Instruction* variable, Function* function);
+
+  // TODO: Update the comment.
   // |inst| is an instruction declaring a variable.  If that variable is
   // referenced in a single function and all of uses are valid as defined by
   // |IsValidUse|, then that function is returned.  Otherwise, the return
   // value is |nullptr|.
-  Function* FindLocalFunction(const Instruction& inst) const;
+  std::set<Function*> FindLocalFunctions(const Instruction& inst) const;
 
   // Returns true is |inst| is a valid use of a pointer.  In this case, a
   // valid use is one where the transformation is able to rewrite the type to
@@ -65,6 +70,14 @@ class PrivateToLocalPass : public Pass {
   // change of the base pointer now pointing to the function storage class.
   bool UpdateUse(Instruction* inst, Instruction* user);
   bool UpdateUses(Instruction* inst);
+
+  bool IsEntryPointFunc(const Function* func) const;
+  Instruction GetEntryPointFunc(const Function& func) const;
+
+  bool IsEntryPointFunc(const uint32_t& func_id) const;
+  void FindEntryPointFuncs(Function* func,
+    std::unordered_set<Function*>& entry_points,
+    std::set<Function*>& visited_funcs) const;
 };
 
 }  // namespace opt

@@ -338,7 +338,7 @@ OpFunctionEnd
   SinglePassRunAndMatch<PrivateToLocalPass>(text, true);
 }
 
-TEST_F(PrivateToLocalTest, SPV14RemoveFromInterfaceMultipleEntryPoints) {
+TEST_F(PrivateToLocalTest, SPV14RemoveFromMultipleEntryPoints1) {
   const std::string text = R"(
 ; CHECK-NOT: OpEntryPoint GLCompute %foo "foo" %in %priv
 ; CHECK-NOT: OpEntryPoint GLCompute %foo "bar" %in %priv
@@ -364,6 +364,46 @@ OpName %priv "priv"
 %entry = OpLabel
 %ld = OpLoad %int %in
 OpStore %priv %ld
+OpReturn
+OpFunctionEnd
+)";
+
+  SetTargetEnv(SPV_ENV_UNIVERSAL_1_4);
+  SinglePassRunAndMatch<PrivateToLocalPass>(text, true);
+}
+
+TEST_F(PrivateToLocalTest, SPV14RemoveFromMultipleEntryPoints2) {
+  const std::string text = R"(
+; CHECK-NOT: OpEntryPoint GLCompute %foo "foo" %in %priv
+; CHECK-NOT: OpEntryPoint GLCompute %bar "bar" %in %priv
+; CHECK: OpEntryPoint GLCompute %foo "foo" %in
+; CHECK: OpEntryPoint GLCompute %bar "bar" %in
+; CHECK: %priv = OpVariable {{%\w+}} Function
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %foo "foo" %in %priv
+OpEntryPoint GLCompute %bar "bar" %in %priv
+OpExecutionMode %foo LocalSize 1 1 1
+OpName %foo "foo"
+OpName %in "in"
+OpName %priv "priv"
+%void = OpTypeVoid
+%int = OpTypeInt 32 0
+%ptr_ssbo_int = OpTypePointer StorageBuffer %int
+%ptr_private_int = OpTypePointer Private %int
+%in = OpVariable %ptr_ssbo_int StorageBuffer
+%priv = OpVariable %ptr_private_int Private
+%void_fn = OpTypeFunction %void
+%foo = OpFunction %void None %void_fn
+%entry1 = OpLabel
+%ld1 = OpLoad %int %in
+OpStore %priv %ld1
+OpReturn
+OpFunctionEnd
+%bar = OpFunction %void None %void_fn
+%entry2 = OpLabel
+%ld2 = OpLoad %int %in
+OpStore %priv %ld2
 OpReturn
 OpFunctionEnd
 )";
@@ -492,6 +532,52 @@ TEST_F(PrivateToLocalTest, DebugPrivateToLocal) {
                OpReturn
                OpFunctionEnd
   )";
+  SinglePassRunAndMatch<PrivateToLocalPass>(text, true);
+}
+
+TEST_F(PrivateToLocalTest, TwoEntryPoints) {
+  const std::string text = R"(
+; CHECK-NOT: OpEntryPoint GLCompute %foo "foo" %in %priv1 %priv2
+; CHECK: OpEntryPoint GLCompute %foo "foo" %in
+; CHECK: %priv1 = OpVariable {{%\w+}} Function
+; CHECK: %priv2 = OpVariable {{%\w+}} Function
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %foo "foo" %in %priv1 %priv2
+OpExecutionMode %foo LocalSize 1 1 1
+OpName %foo "foo"
+OpName %in "in"
+OpName %priv1 "priv1"
+OpName %priv2 "priv2"
+%void = OpTypeVoid
+%int = OpTypeInt 32 0
+%ptr_ssbo_int = OpTypePointer StorageBuffer %int
+%ptr_private_int = OpTypePointer Private %int
+%in = OpVariable %ptr_ssbo_int StorageBuffer
+%priv1 = OpVariable %ptr_private_int Private
+%priv2 = OpVariable %ptr_private_int Private
+%void_fn = OpTypeFunction %void
+%foo = OpFunction %void None %void_fn
+%entry = OpLabel
+%1 = OpFunctionCall %void %bar1
+%2 = OpFunctionCall %void %bar2
+OpReturn
+OpFunctionEnd
+%bar1 = OpFunction %void None %void_fn
+%3 = OpLabel
+%ld1 = OpLoad %int %in
+OpStore %priv1 %ld1
+OpReturn
+OpFunctionEnd
+%bar2 = OpFunction %void None %void_fn
+%4 = OpLabel
+%ld2 = OpLoad %int %in
+OpStore %priv2 %ld2
+OpReturn
+OpFunctionEnd
+)";
+
+  SetTargetEnv(SPV_ENV_UNIVERSAL_1_4);
   SinglePassRunAndMatch<PrivateToLocalPass>(text, true);
 }
 
