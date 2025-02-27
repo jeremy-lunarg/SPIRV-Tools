@@ -1022,6 +1022,13 @@ Optimizer::PassToken CreateSplitCombinedImageSamplerPass();
 // This pass assumes binding numbers are not applid via decoration groups
 // (OpDecorationGroup).
 Optimizer::PassToken CreateResolveBindingConflictsPass();
+
+// Create a pass to remap IDs to improve compression of SPIR-V binary files. The
+// resulting modules have an increased ID range (IDs are not as tightly packed
+// around zero), but will compress better when multiple modules are compressed
+// together, since the compressor's dictionary can find better cross module 
+// commonality.
+Optimizer::PassToken CreateRemapIdsPass();
 }  // namespace spvtools
 
 #endif  // INCLUDE_SPIRV_TOOLS_OPTIMIZER_HPP_

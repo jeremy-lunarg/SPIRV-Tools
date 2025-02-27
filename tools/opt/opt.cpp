@@ -446,6 +446,13 @@ Options (in lexicographical order):)",
                Forwards this option to the validator.  See the validator help
                for details.)");
   printf(R"(
+  --remap-ids
+               Remap IDs to improve compression of SPIR-V binary files. The resulting
+               modules have an increased ID range (IDs are not as tightly packed
+               around zero), but will compress better when multiple modules are
+               compressed together, since the compressor's dictionary can find better
+               cross module commonality.)");
+  printf(R"(
   --relax-struct-store
                Forwards this option to the validator.  See the validator help
                for details.)");
