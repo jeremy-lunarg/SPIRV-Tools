@@ -222,10 +222,12 @@ void Module::ToBinary(std::vector<uint32_t>* binary, bool skip_nop) const {
             context()
                 ->get_feature_mgr()
                 ->GetExtInstImportId_OpenCL100DebugInfo()) {
-          // Emit DebugScope |scope| to |binary|.
-          auto dbg_inst = ext_inst_debuginfo_.begin();
-          scope.ToBinary(dbg_inst->type_id(), context()->TakeNextId(),
-                         dbg_inst->GetSingleWordOperand(2), binary);
+          if(!ext_inst_debuginfo_.empty()) {
+            // Emit DebugScope |scope| to |binary|.
+            auto dbg_inst = ext_inst_debuginfo_.begin();
+            scope.ToBinary(dbg_inst->type_id(), context()->TakeNextId(),
+                          dbg_inst->GetSingleWordOperand(2), binary);
+          }
         }
         last_scope = scope;
       }
